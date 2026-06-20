@@ -2,6 +2,11 @@
   xmlns:tools="http://schemas.android.com/tools"
   package="cn.toside.music.mobile">
 
+    <!-- TV 适配:声明支持但不强制要求(让没触摸屏的电视也能装) -->
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.hardware.gamepad" android:required="false" />
+
     <!-- 获取读写外置存储权限 -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
@@ -30,6 +35,11 @@
         <intent-filter>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
+        </intent-filter>
+        <!-- TV 适配:在 Android TV launcher 里也能看到 -->
+        <intent-filter>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
         </intent-filter>
         <intent-filter>
           <action android:name="android.intent.action.VIEW" />

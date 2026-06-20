@@ -1,0 +1,58 @@
+name: Build TV Debug APK
+
+# 手动触发:Actions 页面 → 选 "Build TV Debug APK" → Run workflow
+# 这样不浪费 Actions 资源,你想跑才跑。
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Debug APK (No Keystore Required)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out git repository
+        uses: actions/checkout@v4
+
+      # 复用上游 setup action:Node 18 + Java 17 + gradle 缓存
+      - name: Setup Env (Node + Java 17)
+        uses: ./.github/actions/setup
+
+      - name: Build Debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      - name: Locate APK
+        id: locate
+        run: |
+          APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -1)
+          if [ -z "$APK" ]; then
+            echo "::error::No APK found in android/app/build/outputs/apk/debug"
+            exit 1
+          fi
+          echo "apk_path=$APK" >> "$GITHUB_OUTPUT"
+          ls -la "$APK"
+
+      - name: Upload APK as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lx-music-tv-debug
+          path: ${{ steps.locate.outputs.apk_path }}
+          if-no-files-found: error
+          retention-days: 7
+
+      # 同时打到 release/Universal(4 ABI 拆分)给愿意装正式版的用户
+      - name: Build Universal Release APK (Unsigned, TV testing only)
+        working-directory: android
+        run: ./gradlew assembleReleaseUniversal
+        continue-on-error: true  # 没 keystore 会失败,允许继续
+
+      - name: Upload Release APK (if exists)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lx-music-tv-release-unsigned
+          path: android/app/build/outputs/apk/release/universal/*.apk
+          if-no-files-found: ignore
+          retention-days: 7

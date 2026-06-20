@@ -1,12 +1,13 @@
 import { useTheme } from '@/store/theme/hook'
 import { useMemo, useRef, useImperativeHandle, forwardRef } from 'react'
-import { Pressable, type PressableProps, StyleSheet, type View, type ViewProps } from 'react-native'
+import { Pressable, type PressableProps, type PressableStateCallbackType, StyleSheet, type View, type ViewProps } from 'react-native'
+import { isTV } from '@/utils/device'
 // import { AppColors } from '@/theme'
 
 
 export interface BtnProps extends PressableProps {
   ripple?: PressableProps['android_ripple']
-  style?: ViewProps['style']
+  style?: ViewProps['style'] | PressableStateCallbackType['style']
   onChangeText?: (value: string) => void
   onClearText?: () => void
   children: React.ReactNode
@@ -31,11 +32,33 @@ export default forwardRef<BtnType, BtnProps>(({ ripple: propsRipple = {}, disabl
     },
   }))
 
+  // TV 焦点高亮:在 Pressable 的 state.style 里加 focused/pressed 反馈。
+  // - 非 TV:跟以前一样,只控制 opacity
+  // - TV:focused 时套主题 hover 色背景 + 边框 + 轻微缩放,给遥控器方向键视觉反馈
+  const composedStyle = (state: PressableStateCallbackType): any => {
+    const baseStyle = { opacity: disabled ? 0.3 : 1 }
+    const isActive = !disabled && (state.focused || state.pressed)
+    if (isTV && isActive) {
+      return [
+        baseStyle,
+        {
+          backgroundColor: theme['c-button-background-hover'],
+          borderColor: theme['c-primary-font-hover'],
+          borderWidth: 2,
+          transform: [{ scale: 1.03 }],
+        },
+        typeof style === 'function' ? style(state) : style,
+      ]
+    }
+    return [baseStyle, typeof style === 'function' ? style(state) : style]
+  }
+
   return (
     <Pressable
       android_ripple={ripple}
       disabled={disabled}
-      style={StyleSheet.compose({ opacity: disabled ? 0.3 : 1 }, style)}
+      style={composedStyle}
+      hasTVPreferredFocus={isTV && props.hasTVPreferredFocus}
       {...props}
       ref={btnRef}
     >
@@ -43,4 +66,3 @@ export default forwardRef<BtnType, BtnProps>(({ ripple: propsRipple = {}, disabl
     </Pressable>
   )
 })
-

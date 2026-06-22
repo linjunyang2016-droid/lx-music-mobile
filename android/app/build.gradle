@@ -126,21 +126,28 @@ android {
         }
     }
     signingConfigs {
+        // TV 适配改动:原作者的 release signingConfigs 在 debug build 中也会 evaluate
+        // (因为 buildTypes.release 也引用了 signingConfigs.release),
+        // 而且无论传 MYAPP_UPLOAD_STORE_FILE 与否,都会在 debug build 阶段去读
+        // keystore.properties —— 缺文件就 FileNotFound,文件空就 path may not be null。
+        // 修法:把 release signingConfigs 包成只在真正打 release 时才 evaluate。
         release {
-            if (project.hasProperty('MYAPP_UPLOAD_STORE_FILE')) {
-                storeFile file(MYAPP_UPLOAD_STORE_FILE)
-                storePassword MYAPP_UPLOAD_STORE_PASSWORD
-                keyAlias MYAPP_UPLOAD_KEY_ALIAS
-                keyPassword MYAPP_UPLOAD_KEY_PASSWORD
-            } else {
-                def keystorePropertiesFile = rootProject.file("keystore.properties")
-                def keystoreProperties = new Properties()
-                keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+            if (gradle.startParameter.taskNames.any { it.toLowerCase().contains('release') }) {
+                if (project.hasProperty('MYAPP_UPLOAD_STORE_FILE')) {
+                    storeFile file(MYAPP_UPLOAD_STORE_FILE)
+                    storePassword MYAPP_UPLOAD_STORE_PASSWORD
+                    keyAlias MYAPP_UPLOAD_KEY_ALIAS
+                    keyPassword MYAPP_UPLOAD_KEY_PASSWORD
+                } else {
+                    def keystorePropertiesFile = rootProject.file("keystore.properties")
+                    def keystoreProperties = new Properties()
+                    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 
-                storeFile file(keystoreProperties['storeFile'])
-                storePassword keystoreProperties['storePassword']
-                keyAlias keystoreProperties['keyAlias']
-                keyPassword keystoreProperties['keyPassword']
+                    storeFile file(keystoreProperties['storeFile'])
+                    storePassword keystoreProperties['storePassword']
+                    keyAlias keystoreProperties['keyAlias']
+                    keyPassword keystoreProperties['keyPassword']
+                }
             }
         }
         debug {

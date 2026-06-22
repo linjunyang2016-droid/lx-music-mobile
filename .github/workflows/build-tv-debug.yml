@@ -19,19 +19,6 @@ jobs:
       - name: Setup Env (Node + Java 17)
         uses: ./.github/actions/setup
 
-      - name: Create dummy keystore.properties
-        # LX Mobile 的 app/build.gradle 第 138-141 行不管 debug/release 都会读 keystore.properties
-        # debug build 也卡这里 (path may not be null or empty string)
-        # 所以建一个带 4 个空字段的 properties 文件占位
-        working-directory: android
-        run: |
-          cat > keystore.properties <<'KEYSTORE_EOF'
-          storeFile=
-          storePassword=
-          keyAlias=
-          keyPassword=
-          KEYSTORE_EOF
-
       - name: Build Debug APK
         working-directory: android
         run: ./gradlew assembleDebug
@@ -53,19 +40,4 @@ jobs:
           name: lx-music-tv-debug
           path: ${{ steps.locate.outputs.apk_path }}
           if-no-files-found: error
-          retention-days: 7
-
-      # 同时打到 release/Universal(4 ABI 拆分)给愿意装正式版的用户
-      - name: Build Universal Release APK (Unsigned, TV testing only)
-        working-directory: android
-        run: ./gradlew assembleReleaseUniversal
-        continue-on-error: true  # 没 keystore 会失败,允许继续
-
-      - name: Upload Release APK (if exists)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: lx-music-tv-release-unsigned
-          path: android/app/build/outputs/apk/release/universal/*.apk
-          if-no-files-found: ignore
           retention-days: 7

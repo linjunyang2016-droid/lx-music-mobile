@@ -11,6 +11,11 @@ export interface BtnProps extends PressableProps {
   onChangeText?: (value: string) => void
   onClearText?: () => void
   children: React.ReactNode
+  // TV 适配:显式传 nextFocus 链(可选,用户自己用 ref 算)
+  nextFocusDown?: number
+  nextFocusUp?: number
+  nextFocusLeft?: number
+  nextFocusRight?: number
 }
 
 
@@ -18,7 +23,17 @@ export interface BtnType {
   measure: (callback: (x: number, y: number, width: number, height: number, pageX: number, pageY: number) => void) => void
 }
 
-export default forwardRef<BtnType, BtnProps>(({ ripple: propsRipple = {}, disabled, children, style, ...props }, ref) => {
+export default forwardRef<BtnType, BtnProps>(({
+  ripple: propsRipple = {},
+  disabled,
+  children,
+  style,
+  nextFocusDown,
+  nextFocusUp,
+  nextFocusLeft,
+  nextFocusRight,
+  ...props
+}, ref) => {
   const theme = useTheme()
   const btnRef = useRef<View>(null)
   const ripple = useMemo(() => ({
@@ -32,9 +47,8 @@ export default forwardRef<BtnType, BtnProps>(({ ripple: propsRipple = {}, disabl
     },
   }))
 
-  // TV 焦点高亮:在 Pressable 的 state.style 里加 focused/pressed 反馈。
-  // - 非 TV:跟以前一样,只控制 opacity
-  // - TV:focused 时套主题 hover 色背景 + 边框 + 轻微缩放,给遥控器方向键视觉反馈
+  // TV 焦点高亮:state.focused 在 TV 模式下是真正的 D-pad focus 状态
+  // (MainActivity 已经在 onResume 时把所有 RN View 设成 focusableInTouchMode=true)
   const composedStyle = (state: PressableStateCallbackType): any => {
     const baseStyle = { opacity: disabled ? 0.3 : 1 }
     const isActive = !disabled && (state.focused || state.pressed)
@@ -44,7 +58,7 @@ export default forwardRef<BtnType, BtnProps>(({ ripple: propsRipple = {}, disabl
         {
           backgroundColor: theme['c-button-background-hover'],
           borderColor: theme['c-primary-font-hover'],
-          borderWidth: 2,
+          borderWidth: 3,
           transform: [{ scale: 1.03 }],
         },
         typeof style === 'function' ? style(state) : style,
@@ -59,6 +73,11 @@ export default forwardRef<BtnType, BtnProps>(({ ripple: propsRipple = {}, disabl
       disabled={disabled}
       style={composedStyle}
       hasTVPreferredFocus={isTV && props.hasTVPreferredFocus}
+      // @ts-ignore: 这些 prop 在 RN 0.73 types 里没标
+      nextFocusDown={isTV ? nextFocusDown : undefined}
+      nextFocusUp={isTV ? nextFocusUp : undefined}
+      nextFocusLeft={isTV ? nextFocusLeft : undefined}
+      nextFocusRight={isTV ? nextFocusRight : undefined}
       {...props}
       ref={btnRef}
     >

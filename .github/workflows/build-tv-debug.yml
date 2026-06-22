@@ -19,6 +19,19 @@ jobs:
       - name: Setup Env (Node + Java 17)
         uses: ./.github/actions/setup
 
+      - name: Bundle JS for debug APK
+        # debug APK 默认从 Metro 拉 JS,离线装上会红屏 "Unable to load script"。
+        # 这里先打 JS bundle 嵌入 APK,变成 standalone 离线可跑。
+        working-directory: .
+        run: |
+          mkdir -p android/app/src/main/assets
+          npx --yes react-native bundle \
+            --platform android \
+            --dev true \
+            --entry-file index.js \
+            --bundle-output android/app/src/main/assets/index.android.bundle \
+            --assets-dest android/app/src/main/res
+
       - name: Build Debug APK
         working-directory: android
         run: ./gradlew assembleDebug

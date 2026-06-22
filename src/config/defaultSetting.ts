@@ -5,7 +5,7 @@ const defaultSetting: LX.AppSetting = {
   'common.apiSource': '',
   'common.sourceNameType': 'alias',
   'common.shareType': 'system',
-  'common.isAgreePact': false,
+  'common.isAgreePact': true,  // TV 适配:默认跳过协议弹窗
   'common.autoHidePlayBar': true,
   'common.drawerLayoutPosition': 'left',
   'common.homePageScroll': true,

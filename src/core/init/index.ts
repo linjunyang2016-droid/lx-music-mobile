@@ -21,7 +21,8 @@ const handlePushedHomeScreen = async() => {
   if (settingState.setting['common.isAgreePact']) {
     if (isFirstPush) {
       isFirstPush = false
-      void checkUpdate()
+      // TV 适配:不弹新版本检查弹窗
+      // void checkUpdate()
       void initDeeplink()
     }
   } else {

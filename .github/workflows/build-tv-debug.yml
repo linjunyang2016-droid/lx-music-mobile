@@ -19,12 +19,18 @@ jobs:
       - name: Setup Env (Node + Java 17)
         uses: ./.github/actions/setup
 
-      - name: Create empty keystore.properties
-        # LX Mobile 的 app/build.gradle 第 138 行不管 debug/release 都会读 keystore.properties
-        # 我们不打 release APK,但 build script 仍会 evaluate 这段 ——
-        # 所以建一个空文件占位,避免 FileNotFoundException
+      - name: Create dummy keystore.properties
+        # LX Mobile 的 app/build.gradle 第 138-141 行不管 debug/release 都会读 keystore.properties
+        # debug build 也卡这里 (path may not be null or empty string)
+        # 所以建一个带 4 个空字段的 properties 文件占位
         working-directory: android
-        run: touch keystore.properties
+        run: |
+          cat > keystore.properties <<'KEYSTORE_EOF'
+          storeFile=
+          storePassword=
+          keyAlias=
+          keyPassword=
+          KEYSTORE_EOF
 
       - name: Build Debug APK
         working-directory: android

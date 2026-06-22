@@ -36,21 +36,12 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug
 
-      - name: Locate APK
-        id: locate
-        run: |
-          APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -1)
-          if [ -z "$APK" ]; then
-            echo "::error::No APK found in android/app/build/outputs/apk/debug"
-            exit 1
-          fi
-          echo "apk_path=$APK" >> "$GITHUB_OUTPUT"
-          ls -la "$APK"
-
-      - name: Upload APK as Artifact
+      - name: Upload all APKs (arm64 + armv7 + x86 + universal)
+        # 国产电视大部分是 armeabi-v7a (32-bit ARM) 不是 arm64,
+        # 所以必须把所有 ABI 都上传,让用户选匹配的装。
         uses: actions/upload-artifact@v4
         with:
-          name: lx-music-tv-debug
-          path: ${{ steps.locate.outputs.apk_path }}
+          name: lx-music-tv-debug-all
+          path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 7

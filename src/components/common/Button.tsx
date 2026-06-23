@@ -1,3 +1,4 @@
+import React from 'react'
 import { useTheme } from '@/store/theme/hook'
 import { useMemo, useRef, useImperativeHandle, forwardRef } from 'react'
 import { Pressable, type PressableProps, type PressableStateCallbackType, StyleSheet, type View, type ViewProps } from 'react-native'
@@ -68,11 +69,33 @@ export default forwardRef<BtnType, BtnProps>(({
     return [baseStyle, typeof style === 'function' ? style(state) : style]
   }
 
+  // TV 适配:在 TV 模式下,自动注册到全局 focus 列表
+  const { useTVFocusable } = require('@/utils/tvNavigation')
+  const tvFocus = isTV ? useTVFocusable(
+    React.useId ? React.useId() : `btn-${Math.random().toString(36).slice(2)}`,
+    props.onPress
+  ) : { ref: btnRef, isFocused: false }
+
   return (
     <Pressable
       android_ripple={ripple}
       disabled={disabled}
-      style={composedStyle}
+      style={(state) => {
+        const baseStyle = composedStyle(state)
+        // TV 模式 + 焦点状态:加强高亮
+        if (isTV && tvFocus.isFocused) {
+          return [
+            baseStyle,
+            {
+              backgroundColor: '#FFEB3B',
+              borderColor: '#FF5722',
+              borderWidth: 5,
+              borderRadius: 4,
+            },
+          ]
+        }
+        return baseStyle
+      }}
       hasTVPreferredFocus={isTV && props.hasTVPreferredFocus}
       // @ts-ignore: 这些 prop 在 RN 0.73 types 里没标
       nextFocusDown={isTV ? nextFocusDown : undefined}
@@ -80,7 +103,7 @@ export default forwardRef<BtnType, BtnProps>(({
       nextFocusLeft={isTV ? nextFocusLeft : undefined}
       nextFocusRight={isTV ? nextFocusRight : undefined}
       {...props}
-      ref={btnRef}
+      ref={isTV ? tvFocus.ref : btnRef}
     >
       {children}
     </Pressable>

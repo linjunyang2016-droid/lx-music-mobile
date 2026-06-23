@@ -1,4 +1,5 @@
 import '@/utils/errorHandle'
+import { installTVNavigation } from '@/utils/tvNavigation'
 import { init as initLog } from '@/utils/log'
 import { bootLog, getBootLog } from '@/utils/bootLog'
 import '@/config/globalData'
@@ -9,6 +10,7 @@ import { listenLaunchEvent } from './navigation/regLaunchedEvent'
 import { tipDialog } from './utils/tools'
 
 console.log('starting app...')
+installTVNavigation()
 listenLaunchEvent()
 
 void Promise.all([getFontSize(), windowSizeTools.init()]).then(async([fontSize]) => {

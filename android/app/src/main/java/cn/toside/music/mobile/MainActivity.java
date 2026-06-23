@@ -16,7 +16,10 @@ import android.view.ViewTreeObserver;
 import android.view.WindowManager;
 import android.widget.TextView;
 
+import com.facebook.react.ReactInstanceManager;
 import com.facebook.react.ReactRootView;
+import com.facebook.react.bridge.ReactContext;
+import com.facebook.react.modules.core.DeviceEventManagerModule;
 import com.reactnativenavigation.NavigationActivity;
 
 public class MainActivity extends NavigationActivity {
@@ -24,6 +27,7 @@ public class MainActivity extends NavigationActivity {
     private TextView debugOverlay;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private ReactRootView lastReactRootView;
+    private String lastKeyInfo = "(none)";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -37,7 +41,6 @@ public class MainActivity extends NavigationActivity {
     public void onResume() {
         super.onResume();
         if (isRunningOnTV()) {
-            // RN view 创建是异步的,用 OnGlobalLayout 持续探测 ReactRootView
             enableDpadFocusOnAllViews(getWindow().getDecorView());
             getWindow().getDecorView().getViewTreeObserver().addOnGlobalLayoutListener(
                 new ViewTreeObserver.OnGlobalLayoutListener() {
@@ -53,23 +56,74 @@ public class MainActivity extends NavigationActivity {
         }
     }
 
+    @Override
+    public void onPause() {
+        super.onPause();
+        hideDebugOverlay();
+    }
+
     /**
-     * 找出 RNN 内部的 ReactRootView,确保它的所有子 view 都可 focus。
-     * RNN 用 LinearLayout 当根容器,但真正的 RN view 树在 ReactRootView 内。
-     * focusSearch 从 LinearLayout 出发不会进入 ReactRootView,
-     * 所以我们要直接定位 ReactRootView 并让它接焦点。
+     * 不再用 Android focus chain(focusSearch 在 RN 上不工作)。
+     * 改用 JS DeviceEventEmitter 把 D-pad 事件发给 React 层,
+     * 由 React 层用自己维护的 focusable 列表 + 几何最近邻算法定位目标。
      */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        boolean handled = false;
+        if (isRunningOnTV() && event.getAction() == KeyEvent.ACTION_DOWN) {
+            int keyCode = event.getKeyCode();
+            String keyName = keyCodeToName(keyCode);
+            lastKeyInfo = String.format("key=%s action=DOWN", keyName);
+            // 把事件转发给 JS 层
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP
+                || keyCode == KeyEvent.KEYCODE_DPAD_DOWN
+                || keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+                || keyCode == KeyEvent.KEYCODE_DPAD_CENTER
+                || keyCode == KeyEvent.KEYCODE_BACK
+                || keyCode == KeyEvent.KEYCODE_MENU) {
+                sendKeyEventToJS(keyCode);
+                handled = true;  // 拦截,不传给 super(避免被 RNN 系统消费)
+            }
+            updateDebugOverlay();
+        }
+        return handled || super.dispatchKeyEvent(event);
+    }
+
+    private String keyCodeToName(int keyCode) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_UP: return "DPAD_UP";
+            case KeyEvent.KEYCODE_DPAD_DOWN: return "DPAD_DOWN";
+            case KeyEvent.KEYCODE_DPAD_LEFT: return "DPAD_LEFT";
+            case KeyEvent.KEYCODE_DPAD_RIGHT: return "DPAD_RIGHT";
+            case KeyEvent.KEYCODE_DPAD_CENTER: return "DPAD_CENTER";
+            case KeyEvent.KEYCODE_BACK: return "BACK";
+            case KeyEvent.KEYCODE_MENU: return "MENU";
+            default: return "K" + keyCode;
+        }
+    }
+
+    private void sendKeyEventToJS(int keyCode) {
+        try {
+            ReactInstanceManager rim = getReactInstanceManager();
+            if (rim == null) return;
+            ReactContext ctx = (ReactContext) rim.getCurrentReactContext();
+            if (ctx == null) return;
+            String name = keyCodeToName(keyCode);
+            ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit("TV_DPAD_EVENT", name);
+        } catch (Exception e) {
+            // ignore
+        }
+    }
+
     private void findAndPrepareReactRootView() {
-        if (lastReactRootView != null) return; // 已经找到了,不再重复
+        if (lastReactRootView != null) return;
         View found = findReactRootView(getWindow().getDecorView());
         if (found != null) {
             lastReactRootView = (ReactRootView) found;
-            // 1. 自己可 focus + touch focus
             lastReactRootView.setFocusableInTouchMode(true);
             lastReactRootView.setFocusable(true);
-            // 2. 强制拿焦点(但要在 dispatchKeyEvent 里才能真正生效,不主动触发)
-            // lastReactRootView.requestFocus();
-            // 3. 递归让所有子 view focusable
             enableDpadFocusOnAllViews(lastReactRootView);
         }
     }
@@ -80,94 +134,6 @@ public class MainActivity extends NavigationActivity {
             ViewGroup vg = (ViewGroup) root;
             for (int i = 0; i < vg.getChildCount(); i++) {
                 View f = findReactRootView(vg.getChildAt(i));
-                if (f != null) return f;
-            }
-        }
-        return null;
-    }
-
-    @Override
-    public void onPause() {
-        super.onPause();
-        hideDebugOverlay();
-    }
-
-    @Override
-    public boolean dispatchKeyEvent(KeyEvent event) {
-        boolean handled = false;
-        if (isRunningOnTV() && event.getAction() == KeyEvent.ACTION_DOWN) {
-            int keyCode = event.getKeyCode();
-            if (keyCode == KeyEvent.KEYCODE_DPAD_UP
-                || keyCode == KeyEvent.KEYCODE_DPAD_DOWN
-                || keyCode == KeyEvent.KEYCODE_DPAD_LEFT
-                || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
-                || keyCode == KeyEvent.KEYCODE_DPAD_CENTER) {
-                View focused = getWindow().getDecorView().findFocus();
-                // 如果焦点卡在根 LinearLayout,先强制移到 ReactRootView
-                if (focused != null && lastReactRootView != null) {
-                    String focusClass = focused.getClass().getSimpleName();
-                    if (focusClass.equals("LinearLayout") || focused == getWindow().getDecorView()) {
-                        lastReactRootView.requestFocus();
-                        focused = lastReactRootView;
-                    }
-                }
-                if (focused == null && lastReactRootView != null) {
-                    lastReactRootView.requestFocus();
-                    focused = lastReactRootView;
-                }
-                if (focused != null) {
-                    if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER) {
-                        focused.performClick();
-                        handled = true;
-                    } else {
-                        int dir = directionOf(keyCode);
-                        // 先在 focus view 内找,再扩到 ReactRootView 全树
-                        View target = focused.focusSearch(dir);
-                        if (target == null || target == focused) {
-                            target = searchFocusableFromRoot(lastReactRootView, dir);
-                        }
-                        if (target != null && target != focused) {
-                            target.requestFocus();
-                            handled = true;
-                        }
-                    }
-                }
-            }
-            updateDebugOverlay();
-        }
-        return super.dispatchKeyEvent(event) || handled;
-    }
-
-    /**
-     * 从根节点向下,递归找方向 dir 上"最近"的可 focus view。
-     * fallback:Android focusSearch 找不到时,自己算几何最近邻。
-     */
-    private View searchFocusableFromRoot(View root, int direction) {
-        if (root == null || !root.isFocusable() || !root.isFocusableInTouchMode()) {
-            // 递归找一个 focusable 的 leaf 当起点
-            return findFirstFocusable(root);
-        }
-        // 直接用 focusSearch
-        return root.focusSearch(direction);
-    }
-
-    private int directionOf(int keyCode) {
-        switch (keyCode) {
-            case KeyEvent.KEYCODE_DPAD_UP: return View.FOCUS_UP;
-            case KeyEvent.KEYCODE_DPAD_DOWN: return View.FOCUS_DOWN;
-            case KeyEvent.KEYCODE_DPAD_LEFT: return View.FOCUS_LEFT;
-            case KeyEvent.KEYCODE_DPAD_RIGHT: return View.FOCUS_RIGHT;
-            default: return View.FOCUS_FORWARD;
-        }
-    }
-
-    private View findFirstFocusable(View root) {
-        if (root == null) return null;
-        if (root.isFocusable() && root.isFocusableInTouchMode()) return root;
-        if (root instanceof ViewGroup) {
-            ViewGroup vg = (ViewGroup) root;
-            for (int i = 0; i < vg.getChildCount(); i++) {
-                View f = findFirstFocusable(vg.getChildAt(i));
                 if (f != null) return f;
             }
         }
@@ -198,7 +164,7 @@ public class MainActivity extends NavigationActivity {
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,  // 不抢焦点
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                 | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                 | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
@@ -223,19 +189,9 @@ public class MainActivity extends NavigationActivity {
     private void updateDebugOverlay() {
         if (debugOverlay == null) return;
         View focused = getWindow().getDecorView().findFocus();
-        String rrvInfo = lastReactRootView == null ? "(not found)" : "ok";
-        if (focused == null) {
-            debugOverlay.setText("FOCUS: (none) RRV=" + rrvInfo);
-        } else {
-            debugOverlay.setText(String.format(
-                "FOCUS: id=%s class=%s focusable=%s touch=%s RRV=%s",
-                focused.getId() == View.NO_ID ? "(no-id)" : String.valueOf(focused.getId()),
-                focused.getClass().getSimpleName(),
-                focused.isFocusable(),
-                focused.isFocusableInTouchMode(),
-                rrvInfo
-            ));
-        }
+        String focusInfo = (focused == null) ? "(none)" :
+            String.format("%s focusable=%s", focused.getClass().getSimpleName(), focused.isFocusable());
+        debugOverlay.setText("KEY: " + lastKeyInfo + " | FOCUS: " + focusInfo);
     }
 
     private boolean isRunningOnTV() {

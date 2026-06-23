@@ -564,6 +564,8 @@ export const cheatTip = async() => {
   })
 }
 
+*/
+
 export const remoteLyricTip = async() => {
   const isRead = await getData<boolean>(storageDataPrefix.remoteLyricTip)
   if (isRead) return

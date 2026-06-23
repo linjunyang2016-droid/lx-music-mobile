@@ -4,6 +4,7 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
+import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -15,12 +16,14 @@ import android.view.ViewTreeObserver;
 import android.view.WindowManager;
 import android.widget.TextView;
 
+import com.facebook.react.ReactRootView;
 import com.reactnativenavigation.NavigationActivity;
 
 public class MainActivity extends NavigationActivity {
 
     private TextView debugOverlay;
     private final Handler handler = new Handler(Looper.getMainLooper());
+    private ReactRootView lastReactRootView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -34,19 +37,53 @@ public class MainActivity extends NavigationActivity {
     public void onResume() {
         super.onResume();
         if (isRunningOnTV()) {
-            // 启动时 + 每次布局变化时让 RN view 树所有节点可 focus
+            // RN view 创建是异步的,用 OnGlobalLayout 持续探测 ReactRootView
             enableDpadFocusOnAllViews(getWindow().getDecorView());
             getWindow().getDecorView().getViewTreeObserver().addOnGlobalLayoutListener(
                 new ViewTreeObserver.OnGlobalLayoutListener() {
                     @Override
                     public void onGlobalLayout() {
                         enableDpadFocusOnAllViews(getWindow().getDecorView());
+                        findAndPrepareReactRootView();
                         updateDebugOverlay();
                     }
                 }
             );
             showDebugOverlay();
         }
+    }
+
+    /**
+     * 找出 RNN 内部的 ReactRootView,确保它的所有子 view 都可 focus。
+     * RNN 用 LinearLayout 当根容器,但真正的 RN view 树在 ReactRootView 内。
+     * focusSearch 从 LinearLayout 出发不会进入 ReactRootView,
+     * 所以我们要直接定位 ReactRootView 并让它接焦点。
+     */
+    private void findAndPrepareReactRootView() {
+        if (lastReactRootView != null) return; // 已经找到了,不再重复
+        View found = findReactRootView(getWindow().getDecorView());
+        if (found != null) {
+            lastReactRootView = (ReactRootView) found;
+            // 1. 自己可 focus + touch focus
+            lastReactRootView.setFocusableInTouchMode(true);
+            lastReactRootView.setFocusable(true);
+            // 2. 强制拿焦点
+            lastReactRootView.requestFocus();
+            // 3. 递归让所有子 view focusable
+            enableDpadFocusOnAllViews(lastReactRootView);
+        }
+    }
+
+    private View findReactRootView(View root) {
+        if (root instanceof ReactRootView) return root;
+        if (root instanceof ViewGroup) {
+            ViewGroup vg = (ViewGroup) root;
+            for (int i = 0; i < vg.getChildCount(); i++) {
+                View f = findReactRootView(vg.getChildAt(i));
+                if (f != null) return f;
+            }
+        }
+        return null;
     }
 
     @Override
@@ -66,27 +103,52 @@ public class MainActivity extends NavigationActivity {
                 || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
                 || keyCode == KeyEvent.KEYCODE_DPAD_CENTER) {
                 View focused = getWindow().getDecorView().findFocus();
-                if (focused == null) {
-                    View target = findFirstFocusable(getWindow().getDecorView());
-                    if (target != null) {
-                        target.requestFocus();
-                        handled = true;
+                // 如果焦点卡在根 LinearLayout,先强制移到 ReactRootView
+                if (focused != null && lastReactRootView != null) {
+                    String focusClass = focused.getClass().getSimpleName();
+                    if (focusClass.equals("LinearLayout") || focused == getWindow().getDecorView()) {
+                        lastReactRootView.requestFocus();
+                        focused = lastReactRootView;
                     }
-                } else if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER) {
-                    focused.performClick();
-                    handled = true;
-                } else {
-                    View target = focused.focusSearch(directionOf(keyCode));
-                    if (target != null && target != focused) {
-                        target.requestFocus();
+                }
+                if (focused == null && lastReactRootView != null) {
+                    lastReactRootView.requestFocus();
+                    focused = lastReactRootView;
+                }
+                if (focused != null) {
+                    if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER) {
+                        focused.performClick();
                         handled = true;
+                    } else {
+                        int dir = directionOf(keyCode);
+                        // 先在 focus view 内找,再扩到 ReactRootView 全树
+                        View target = focused.focusSearch(dir);
+                        if (target == null || target == focused) {
+                            target = searchFocusableFromRoot(lastReactRootView, dir);
+                        }
+                        if (target != null && target != focused) {
+                            target.requestFocus();
+                            handled = true;
+                        }
                     }
                 }
             }
             updateDebugOverlay();
         }
-        // 不管 handled 与否,都继续让 super 处理(避免屏蔽系统行为)
         return super.dispatchKeyEvent(event) || handled;
+    }
+
+    /**
+     * 从根节点向下,递归找方向 dir 上"最近"的可 focus view。
+     * fallback:Android focusSearch 找不到时,自己算几何最近邻。
+     */
+    private View searchFocusableFromRoot(View root, int direction) {
+        if (root == null || !root.isFocusable() || !root.isFocusableInTouchMode()) {
+            // 递归找一个 focusable 的 leaf 当起点
+            return findFirstFocusable(root);
+        }
+        // 直接用 focusSearch
+        return root.focusSearch(direction);
     }
 
     private int directionOf(int keyCode) {
@@ -126,10 +188,6 @@ public class MainActivity extends NavigationActivity {
         }
     }
 
-    /**
-     * TV 适配调试:屏幕顶部红色横条显示当前焦点 view 的 id / class / focusable 状态
-     * 关键诊断信息 — 用户看到红色条变化就知道焦点是不是真的在动
-     */
     private void showDebugOverlay() {
         if (debugOverlay != null) return;
         debugOverlay = new TextView(this);
@@ -162,17 +220,17 @@ public class MainActivity extends NavigationActivity {
     private void updateDebugOverlay() {
         if (debugOverlay == null) return;
         View focused = getWindow().getDecorView().findFocus();
+        String rrvInfo = lastReactRootView == null ? "(not found)" : "ok";
         if (focused == null) {
-            debugOverlay.setText("FOCUS: (none) — press D-pad to give focus");
+            debugOverlay.setText("FOCUS: (none) RRV=" + rrvInfo);
         } else {
             debugOverlay.setText(String.format(
-                "FOCUS: id=%s class=%s focusable=%s touch=%s size=%dx%d pos=(%d,%d)",
+                "FOCUS: id=%s class=%s focusable=%s touch=%s RRV=%s",
                 focused.getId() == View.NO_ID ? "(no-id)" : String.valueOf(focused.getId()),
                 focused.getClass().getSimpleName(),
                 focused.isFocusable(),
                 focused.isFocusableInTouchMode(),
-                focused.getWidth(), focused.getHeight(),
-                focused.getLeft(), focused.getTop()
+                rrvInfo
             ));
         }
     }

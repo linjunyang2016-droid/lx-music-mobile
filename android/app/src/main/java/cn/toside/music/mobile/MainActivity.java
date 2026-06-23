@@ -105,14 +105,27 @@ public class MainActivity extends NavigationActivity {
 
     private void sendKeyEventToJS(int keyCode) {
         try {
-            ReactInstanceManager rim = getReactInstanceManager();
+            // RNN 的 NavigationActivity 不继承 ReactActivity,没法直接 getReactInstanceManager()
+            // 但 Application 持有它,用反射拿
+            android.app.Application app = getApplication();
+            java.lang.reflect.Field[] fields = app.getClass().getSuperclass().getDeclaredFields();
+            Object rim = null;
+            for (java.lang.reflect.Field f : fields) {
+                if (f.getType().getSimpleName().equals("ReactInstanceManager")) {
+                    f.setAccessible(true);
+                    rim = f.get(app);
+                    break;
+                }
+            }
             if (rim == null) return;
-            ReactContext ctx = (ReactContext) rim.getCurrentReactContext();
-            if (ctx == null) return;
+            java.lang.reflect.Method getCtx = rim.getClass().getMethod("getCurrentReactContext");
+            Object ctxObj = getCtx.invoke(rim);
+            if (!(ctxObj instanceof ReactContext)) return;
+            ReactContext ctx = (ReactContext) ctxObj;
             String name = keyCodeToName(keyCode);
             ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
                 .emit("TV_DPAD_EVENT", name);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             // ignore
         }
     }

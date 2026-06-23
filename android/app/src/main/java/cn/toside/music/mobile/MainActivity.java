@@ -67,8 +67,8 @@ public class MainActivity extends NavigationActivity {
             // 1. 自己可 focus + touch focus
             lastReactRootView.setFocusableInTouchMode(true);
             lastReactRootView.setFocusable(true);
-            // 2. 强制拿焦点
-            lastReactRootView.requestFocus();
+            // 2. 强制拿焦点(但要在 dispatchKeyEvent 里才能真正生效,不主动触发)
+            // lastReactRootView.requestFocus();
             // 3. 递归让所有子 view focusable
             enableDpadFocusOnAllViews(lastReactRootView);
         }
@@ -198,8 +198,11 @@ public class MainActivity extends NavigationActivity {
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,  // 不抢焦点
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         );
         params.gravity = Gravity.TOP;

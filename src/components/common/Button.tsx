@@ -56,10 +56,11 @@ export default forwardRef<BtnType, BtnProps>(({
       return [
         baseStyle,
         {
-          backgroundColor: theme['c-button-background-hover'],
-          borderColor: theme['c-primary-font-hover'],
-          borderWidth: 3,
-          transform: [{ scale: 1.03 }],
+          backgroundColor: '#FFEB3B',          // 纯黄色 — TV 上最显眼的对比
+          borderColor: '#FF5722',             // 橙红色边框
+          borderWidth: 5,                     // 5px 粗边框,远距离可见
+          borderRadius: 4,
+          transform: [{ scale: 1.05 }],       // 5% 放大
         },
         typeof style === 'function' ? style(state) : style,
       ]
